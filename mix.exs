@@ -30,7 +30,8 @@ defmodule ProvSparqlPoc.MixProject do
       {:sparql_client, "~> 0.5.0"},
       {:grax, "~> 0.5.0"},
       {:jason, "~> 1.4"},
-      {:benchee, "~> 1.4", only: [:dev, :test]}
+      {:benchee, "~> 1.4", only: [:dev, :test]},
+      {:benchee_html, "~> 1.0", only: [:dev, :test]}
     ]
   end
 end

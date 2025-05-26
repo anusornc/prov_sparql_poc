@@ -1,178 +1,314 @@
 # benchmark/supply_chain_benchmark.exs
-# Fixed benchmark without ExUnit dependencies
+# Enhanced benchmark with benchee_html for comprehensive HTML reporting
 
 alias ProvSparqlPoc.{MilkSupplyChain, QueryEngine, GraphStore}
 
 defmodule SupplyChainBenchmark do
-  def run do
-    IO.puts("🚀 Starting ProvChain PROV-O + SPARQL Benchmark...")
+  @moduledoc """
+  Comprehensive benchmark suite for ProvSparqlPoc with HTML reporting.
+
+  Generates detailed performance reports in multiple formats:
+  - Console output for immediate feedback
+  - HTML reports for detailed analysis and sharing
+  - JSON data for further processing
+  """
+
+  @benchmark_output_dir "benchmark_results"
+
+  def run_main_benchmarks do
+    IO.puts("🚀 Starting ProvChain PROV-O + SPARQL Main Benchmark...")
     IO.puts("=" |> String.duplicate(60))
+
+    # Ensure output directory exists
+    File.mkdir_p!(@benchmark_output_dir)
+
+    # Setup common test data
+    setup_test_data()
 
     Benchee.run(
       %{
-        "create_supply_chain" => fn batch_id ->
+        "create_supply_chain" => fn _input ->
+          batch_id = "bench_#{System.system_time()}_#{:rand.uniform(1000)}"
           MilkSupplyChain.create_milk_trace(batch_id)
         end,
-        "trace_to_origin" => fn {batch_id, product_iri} ->
+        "add_triples_to_store" => fn _input ->
+          batch_id = "store_test_#{System.system_time()}"
+          triples = MilkSupplyChain.create_milk_trace(batch_id)
+          GraphStore.add_triples(triples)
+        end,
+        "trace_to_origin" => fn _input ->
+          # Use pre-existing test data
+          product_iri = "http://example.org/milk/package/test_batch_001"
           QueryEngine.trace_to_origin(product_iri)
         end,
-        "contamination_impact" => fn {batch_id, batch_iri} ->
+        "contamination_impact" => fn _input ->
+          # Use pre-existing test data
+          batch_iri = "http://example.org/milk/batch/test_batch_001"
           QueryEngine.contamination_impact(batch_iri)
         end,
         "count_entities" => fn _input ->
           QueryEngine.count_entities()
+        end,
+        "supply_chain_network" => fn _input ->
+          # Use pre-existing test data
+          batch_iri = "http://example.org/milk/batch/test_batch_001"
+          QueryEngine.get_supply_chain_network(batch_iri)
         end
       },
-      before_scenario: fn input ->
-        # Clear graph before each scenario
-        GraphStore.clear_graph()
-
-        # Create test data
-        batch_id = "bench_#{System.system_time()}"
-        triples = MilkSupplyChain.create_milk_trace(batch_id)
-        GraphStore.add_triples(triples)
-
-        product_iri = "http://example.org/milk/package/#{batch_id}"
-        batch_iri = "http://example.org/milk/batch/#{batch_id}"
-
-        case input do
-          "create_supply_chain" -> batch_id
-          "trace_to_origin" -> {batch_id, product_iri}
-          "contamination_impact" -> {batch_id, batch_iri}
-          "count_entities" -> :no_input
-        end
+      before_scenario: fn _job_name ->
+        # Ensure we have test data for each scenario
+        setup_test_data()
       end,
-      before_each: fn input ->
-        # Small delay to ensure clean state
-        Process.sleep(1)
-        input
-      end,
-      time: 5,        # Run for 5 seconds each
-      memory_time: 2, # Measure memory for 2 seconds
-      warmup: 1,      # 1 second warmup
+      time: 8,
+      memory_time: 4,
+      warmup: 2,
       print: [
         benchmarking: true,
         fast_warning: false,
         configuration: true
-      ]
+      ],
+      formatters: [
+        Benchee.Formatters.Console,
+        {Benchee.Formatters.HTML, file: Path.join(@benchmark_output_dir, "main_benchmark.html")},
+        {Benchee.Formatters.JSON, file: Path.join(@benchmark_output_dir, "main_benchmark.json")}
+      ],
+      title: "ProvChain Main Operations Benchmark"
     )
+
+    IO.puts("\n📊 Main benchmark complete! Check #{@benchmark_output_dir}/main_benchmark.html")
   end
 
-  def run_scalability_test do
-    IO.puts("\n🔬 Scalability Test - Multiple Supply Chains")
+  def run_scalability_benchmarks do
+    IO.puts("\n🔬 Running Scalability Benchmarks...")
     IO.puts("=" |> String.duplicate(60))
 
-    # Test with different data sizes
-    data_sizes = [1, 5, 10, 25, 50, 100]
+    data_sizes = [1, 5, 10, 25, 50]
 
-    Enum.each(data_sizes, fn size ->
-      IO.puts("\n📊 Testing with #{size} supply chains...")
+    scalability_jobs =
+      for size <- data_sizes, into: %{} do
+        {"#{size}_supply_chains", fn ->
+          # Clear graph for clean test
+          GraphStore.clear_graph()
 
-      # Measure creation time
-      {creation_time, triples} = :timer.tc(fn ->
-        1..size
-        |> Enum.flat_map(fn i ->
-          MilkSupplyChain.create_milk_trace("scale_test_#{i}_#{System.system_time()}")
-        end)
-      end)
+          # Create multiple supply chains
+          all_triples = 1..size
+          |> Enum.flat_map(fn i ->
+            MilkSupplyChain.create_milk_trace("scale_test_#{size}_#{i}_#{System.system_time()}")
+          end)
 
-      # Clear and add data
-      GraphStore.clear_graph()
+          # Add to graph store
+          GraphStore.add_triples(all_triples)
 
-      {insertion_time, :ok} = :timer.tc(fn ->
-        GraphStore.add_triples(triples)
-      end)
+          # Query the first batch
+          first_batch_iri = "http://example.org/milk/package/scale_test_#{size}_1_#{System.system_time()}"
+          QueryEngine.trace_to_origin(first_batch_iri)
+        end}
+      end
 
-      # Measure query time
-      first_batch_iri = "http://example.org/milk/package/scale_test_1_#{System.system_time()}"
-      {query_time, {:ok, _results}} = :timer.tc(fn ->
-        QueryEngine.trace_to_origin(first_batch_iri)
-      end)
+    Benchee.run(
+      scalability_jobs,
+      time: 6,
+      memory_time: 3,
+      warmup: 1,
+      print: [
+        benchmarking: true,
+        fast_warning: false,
+        configuration: true
+      ],
+      formatters: [
+        Benchee.Formatters.Console,
+        {Benchee.Formatters.HTML,
+         file: Path.join(@benchmark_output_dir, "scalability_benchmark.html"),
+         title: "Supply Chain Scalability Analysis"
+        },
+        {Benchee.Formatters.JSON, file: Path.join(@benchmark_output_dir, "scalability_benchmark.json")}
+      ],
+      title: "ProvChain Scalability Benchmark"
+    )
 
-      # Measure count time
-      {count_time, {:ok, entity_count}} = :timer.tc(fn ->
-        QueryEngine.count_entities()
-      end)
-
-      IO.puts("  Chains: #{size}")
-      IO.puts("  Triples: #{length(triples)}")
-      IO.puts("  Creation: #{Float.round(creation_time / 1000, 2)}ms")
-      IO.puts("  Insertion: #{Float.round(insertion_time / 1000, 2)}ms")
-      IO.puts("  Query: #{Float.round(query_time / 1000, 2)}ms")
-      IO.puts("  Count: #{Float.round(count_time / 1000, 2)}ms")
-      IO.puts("  Entities: #{entity_count}")
-    end)
+    IO.puts("\n📈 Scalability benchmark complete! Check #{@benchmark_output_dir}/scalability_benchmark.html")
   end
 
-  def run_complexity_test do
-    IO.puts("\n🧩 Query Complexity Test")
+  def run_query_benchmarks do
+    IO.puts("\n🧩 Running Query Performance Benchmarks...")
     IO.puts("=" |> String.duplicate(60))
 
-    # Create a large dataset first
-    IO.puts("Creating test dataset...")
+    # Setup large dataset for query testing
+    setup_large_dataset()
 
-    # Clear graph
-    GraphStore.clear_graph()
-
-    # Create 20 interconnected supply chains
-    all_triples = 1..20
-    |> Enum.flat_map(fn i ->
-      MilkSupplyChain.create_milk_trace("complexity_test_#{i}_#{System.system_time()}")
-    end)
-
-    GraphStore.add_triples(all_triples)
-    IO.puts("Dataset ready: #{length(all_triples)} triples")
-
-    # Test different query types
-    queries = %{
-      "simple_count" => fn ->
+    query_jobs = %{
+      "simple_entity_count" => fn ->
         QueryEngine.count_entities()
       end,
-      "single_trace" => fn ->
-        QueryEngine.trace_to_origin("http://example.org/milk/package/complexity_test_1_#{System.system_time()}")
+      "single_product_trace" => fn ->
+        QueryEngine.trace_to_origin("http://example.org/milk/package/large_dataset_1")
       end,
-      "contamination_impact" => fn ->
-        QueryEngine.contamination_impact("http://example.org/milk/batch/complexity_test_1_#{System.system_time()}")
+      "contamination_impact_analysis" => fn ->
+        QueryEngine.contamination_impact("http://example.org/milk/batch/large_dataset_1")
       end,
-      "supply_chain_network" => fn ->
-        QueryEngine.get_supply_chain_network("http://example.org/milk/batch/complexity_test_1_#{System.system_time()}")
+      "full_supply_chain_network" => fn ->
+        QueryEngine.get_supply_chain_network("http://example.org/milk/batch/large_dataset_10")
       end
     }
 
-    Enum.each(queries, fn {query_name, query_fn} ->
-      IO.puts("\n📈 Testing #{query_name}...")
+    Benchee.run(
+      query_jobs,
+      time: 8,
+      memory_time: 4,
+      warmup: 2,
+      print: [
+        benchmarking: true,
+        fast_warning: false,
+        configuration: true
+      ],
+      formatters: [
+        Benchee.Formatters.Console,
+        {Benchee.Formatters.HTML,
+         file: Path.join(@benchmark_output_dir, "query_benchmark.html"),
+         title: "SPARQL Query Performance Analysis"
+        },
+        {Benchee.Formatters.JSON, file: Path.join(@benchmark_output_dir, "query_benchmark.json")}
+      ],
+      title: "ProvChain Query Performance Benchmark"
+    )
 
-      # Run multiple times and average
-      times = for _i <- 1..5 do
-        {time, _result} = :timer.tc(query_fn)
-        time
-      end
+    IO.puts("\n🎯 Query benchmark complete! Check #{@benchmark_output_dir}/query_benchmark.html")
+  end
 
-      avg_time = Enum.sum(times) / length(times)
-      min_time = Enum.min(times)
-      max_time = Enum.max(times)
+  # Helper functions
+  defp setup_test_data do
+    # Clear and setup basic test data
+    GraphStore.clear_graph()
 
-      IO.puts("  Average: #{Float.round(avg_time / 1000, 2)}ms")
-      IO.puts("  Min: #{Float.round(min_time / 1000, 2)}ms")
-      IO.puts("  Max: #{Float.round(max_time / 1000, 2)}ms")
+    # Create a few test supply chains
+    test_triples = 1..3
+    |> Enum.flat_map(fn i ->
+      MilkSupplyChain.create_milk_trace("test_batch_00#{i}")
     end)
+
+    GraphStore.add_triples(test_triples)
+  end
+
+  defp setup_large_dataset do
+    IO.puts("🔧 Setting up large dataset for query testing...")
+    GraphStore.clear_graph()
+
+    # Create 30 supply chains for query testing
+    large_dataset_triples = 1..30
+    |> Enum.flat_map(fn i ->
+      MilkSupplyChain.create_milk_trace("large_dataset_#{i}")
+    end)
+
+    GraphStore.add_triples(large_dataset_triples)
+    IO.puts("✅ Large dataset ready: #{length(large_dataset_triples)} triples")
+  end
+
+  def generate_summary_report do
+    IO.puts("\n📋 Generating Summary Report...")
+
+    summary_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>ProvChain Benchmark Summary</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+            .header { background: #2c3e50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+            .benchmark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+            .benchmark-card { border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9; }
+            .benchmark-card h3 { color: #2c3e50; margin-top: 0; }
+            .benchmark-card a { color: #3498db; text-decoration: none; }
+            .benchmark-card a:hover { text-decoration: underline; }
+            .tech-info { background: #ecf0f1; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 30px; color: #666; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🚀 ProvChain PROV-O + SPARQL Benchmark Results</h1>
+            <p>Comprehensive performance analysis of supply chain traceability operations</p>
+            <p><strong>Generated:</strong> #{DateTime.now!("Etc/UTC") |> DateTime.to_string()}</p>
+        </div>
+
+        <div class="tech-info">
+            <h3>🔧 Technology Stack</h3>
+            <ul>
+                <li><strong>PROV.ex:</strong> #{Application.spec(:prov, :vsn)}</li>
+                <li><strong>SPARQL.ex:</strong> #{Application.spec(:sparql, :vsn)}</li>
+                <li><strong>RDF.ex:</strong> #{Application.spec(:rdf, :vsn)}</li>
+                <li><strong>Elixir:</strong> #{System.version()}</li>
+                <li><strong>Erlang/OTP:</strong> #{System.otp_release()}</li>
+            </ul>
+        </div>
+
+        <div class="benchmark-grid">
+            <div class="benchmark-card">
+                <h3>📊 Main Operations</h3>
+                <p>Core supply chain operations including entity creation, triple storage, and basic queries.</p>
+                <p><a href="main_benchmark.html">View Detailed Results →</a></p>
+                <p><small>Tests: create_supply_chain, add_triples_to_store, trace_to_origin, contamination_impact, count_entities</small></p>
+            </div>
+
+            <div class="benchmark-card">
+                <h3>📈 Scalability Analysis</h3>
+                <p>Performance characteristics as the number of supply chains scales from 1 to 50.</p>
+                <p><a href="scalability_benchmark.html">View Detailed Results →</a></p>
+                <p><small>Tests: 1, 5, 10, 25, 50 supply chains</small></p>
+            </div>
+
+            <div class="benchmark-card">
+                <h3>🧩 Query Performance</h3>
+                <p>SPARQL query performance analysis from simple counts to complex network traversals.</p>
+                <p><a href="query_benchmark.html">View Detailed Results →</a></p>
+                <p><small>Tests: entity counts, product traces, contamination analysis, network queries</small></p>
+            </div>
+        </div>
+
+        <div class="tech-info">
+            <h3>📋 JSON Data Files</h3>
+            <p>Raw benchmark data available for further analysis:</p>
+            <ul>
+                <li><a href="main_benchmark.json">main_benchmark.json</a></li>
+                <li><a href="scalability_benchmark.json">scalability_benchmark.json</a></li>
+                <li><a href="query_benchmark.json">query_benchmark.json</a></li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>Generated by ProvSparqlPoc Benchmark Suite</p>
+            <p>🌟 Powered by Benchee + Benchee HTML</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    summary_file = Path.join(@benchmark_output_dir, "index.html")
+    File.write!(summary_file, summary_html)
+
+    IO.puts("✅ Summary report generated: #{summary_file}")
+  end
+
+  def run_all_benchmarks do
+    IO.puts("🎯 ProvChain PROV-O + SPARQL Complete Performance Suite")
+    IO.puts("Testing: PROV.ex #{Application.spec(:prov, :vsn)} + SPARQL.ex #{Application.spec(:sparql, :vsn)}")
+    IO.puts("Date: #{DateTime.now!("Etc/UTC")}")
+    IO.puts("")
+
+    # Run all benchmark suites
+    run_main_benchmarks()
+    run_scalability_benchmarks()
+    run_query_benchmarks()
+
+    # Generate summary
+    generate_summary_report()
+
+    IO.puts("\n🎉 Complete Benchmark Suite Finished!")
+    IO.puts("=" |> String.duplicate(60))
+    IO.puts("📂 All results available in: #{@benchmark_output_dir}/")
+    IO.puts("🌐 Open #{@benchmark_output_dir}/index.html for summary")
+    IO.puts("=" |> String.duplicate(60))
   end
 end
 
-# Run all benchmarks
-IO.puts("🎯 ProvChain PROV-O + SPARQL Performance Benchmark")
-IO.puts("Testing: PROV.ex #{Application.spec(:prov, :vsn)} + SPARQL.ex #{Application.spec(:sparql, :vsn)}")
-IO.puts("Date: #{DateTime.now!("Etc/UTC")}")
-IO.puts("")
-
-# Main benchmarks
-SupplyChainBenchmark.run()
-
-# Scalability test
-SupplyChainBenchmark.run_scalability_test()
-
-# Complexity test
-SupplyChainBenchmark.run_complexity_test()
-
-IO.puts("\n✅ Benchmark Complete!")
-IO.puts("=" |> String.duplicate(60))
+# Run complete benchmark suite
+SupplyChainBenchmark.run_all_benchmarks()

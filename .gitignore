@@ -21,3 +21,5 @@ prov_sparql_poc-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+/benchmark_results/
+# Ignore the generated HTML documentation.

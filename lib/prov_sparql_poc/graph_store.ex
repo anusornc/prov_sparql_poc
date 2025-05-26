@@ -23,8 +23,37 @@ defmodule ProvSparqlPoc.GraphStore do
   end
 
   def handle_call({:add_triples, triples}, _from, %{graph: graph} = state) do
-    new_graph = Graph.add(graph, triples)
-    {:reply, :ok, %{state | graph: new_graph}}
+    case triples do
+      # Handle invalid inputs gracefully
+      :no_input ->
+        Logger.warning("GraphStore received :no_input, skipping triple addition")
+        {:reply, :ok, state}
+
+      # Handle empty lists
+      [] ->
+        {:reply, :ok, state}
+
+      # Handle nil
+      nil ->
+        Logger.warning("GraphStore received nil triples, skipping triple addition")
+        {:reply, :ok, state}
+
+      # Handle valid triples (list of tuples)
+      triples when is_list(triples) ->
+        try do
+          new_graph = Graph.add(graph, triples)
+          {:reply, :ok, %{state | graph: new_graph}}
+        rescue
+          error ->
+            Logger.error("Failed to add triples to graph: #{inspect(error)}")
+            {:reply, {:error, error}, state}
+        end
+
+      # Handle other invalid inputs
+      invalid ->
+        Logger.warning("GraphStore received invalid triples format: #{inspect(invalid)}")
+        {:reply, {:error, :invalid_triples_format}, state}
+    end
   end
 
   def handle_call(:clear_graph, _from, state) do
