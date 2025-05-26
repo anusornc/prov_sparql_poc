@@ -85,6 +85,9 @@ iex> triples = MilkSupplyChain.create_milk_trace(batch_id)
 iex> GraphStore.add_triples(triples)
 iex> {:ok, count} = QueryEngine.count_entities()
 iex> IO.puts("Created supply chain with #{count} entities")
+
+# Debug the graph structure
+iex> QueryEngine.debug_graph()
 ```
 
 ### 2. Run Benchmarks
