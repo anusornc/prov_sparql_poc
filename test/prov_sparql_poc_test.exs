@@ -49,7 +49,7 @@ defmodule ProvSparqlPocTest do
 
       # Should find results (either from SPARQL or fallback)
       # With fallback mechanism, we expect at least 1 result
-      assert length(trace_results) >= 1
+      assert length(trace_results.results) >= 1
     end
 
     test "finds contamination impact correctly" do
@@ -64,7 +64,7 @@ defmodule ProvSparqlPocTest do
       {:ok, impact_results} = QueryEngine.contamination_impact(milk_batch_iri)
 
       # Should find results (either from SPARQL or fallback)
-      assert length(impact_results) >= 0
+      assert length(impact_results.results) >= 0
     end
   end
 

@@ -4,13 +4,18 @@ A **Proof of Concept (PoC)** demonstrating supply chain traceability using **W3C
 
 ## 🎯 Project Overview
 
-This project models milk supply chain provenance from farm to package, enabling:
+This project provides a robust and scalable solution for supply chain traceability by leveraging the W3C PROV-O ontology, RDF, and SPARQL technologies within the Elixir ecosystem. It demonstrates how to model, store, and query provenance data for a milk supply chain, from the initial farm batch to the final packaged product. The primary goals of this PoC are to showcase:
 
-- **Complete traceability**: Track products back to their origin
-- **Contamination impact analysis**: Find all affected products from a contaminated source
-- **Supply chain transparency**: Visualize the entire production network
-- **Regulatory compliance**: Meet food safety and traceability requirements
-- **Performance at scale**: Handle multiple supply chains efficiently
+- **End-to-End Traceability**: The ability to trace any product back to its original source, providing a complete history of its journey through the supply chain.
+- **Impact Analysis**: A mechanism to identify all products that could be affected by a contamination event at any point in the supply chain.
+- **Data-Driven Transparency**: The capacity to visualize and understand the entire supply chain network, including all entities, activities, and agents involved.
+- **Scalable Performance**: The efficiency of the system in handling a growing number of supply chains, with comprehensive benchmarks to validate its performance.
+
+## 📝 Project Status
+
+**Status: Completed and Stable**
+
+This Proof of Concept is fully functional and has been benchmarked for performance and scalability. The core features are implemented, tested, and documented. The project serves as a successful demonstration of using Elixir with PROV-O, RDF, and SPARQL for supply chain traceability.
 
 ## 🏗️ Architecture
 
