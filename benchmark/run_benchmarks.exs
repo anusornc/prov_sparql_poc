@@ -1,8 +1,6 @@
 # benchmark/run_benchmarks.exs
 # Simple script to run specific benchmark components
 
-alias ProvSparqlPoc.{MilkSupplyChain, QueryEngine, GraphStore}
-
 defmodule BenchmarkRunner do
   @moduledoc """
   Simple benchmark runner for individual test components.
